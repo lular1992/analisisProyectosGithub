@@ -204,8 +204,40 @@ public class ProbandoAPI {
 
 	}
 
+	public static Process clonarRepositorio(SearchRepository proyecto) {
+		
+		String urlProyecto = proyecto.getUrl() + ".git";
+		String comando="";
+		Process p1 = null;
+		
+		try {
+			pathRepositorioEnLocal = File.createTempFile(proyecto.getName(),
+					"", new File(raizProyecto));
+			pathRepositorioEnLocal.delete();
 
-	public static int clonarRepositorio(SearchRepository proyecto) {
+			// Clonar
+			log.println("Clonando desde " + urlProyecto + " a "
+					+ pathRepositorioEnLocal + "\n");
+
+			comando = "git clone "+urlProyecto+" "+pathRepositorioEnLocal;
+
+			Runtime runtime = Runtime.getRuntime();
+			p1 = runtime.exec(comando);
+		} catch (IOException e) {
+			log.println("No se ha podido clonar el repositorio "+proyecto.getName()+" desde "+urlProyecto);
+			log.println(e.getMessage());
+			logProyectosAnalizados.println("NO CLONADO");
+		} catch (Exception e) {
+			log.println("Error desconocido. Comando ejecutado: " + comando);
+			log.println(e.getMessage());
+			logProyectosAnalizados.println("NO CLONADO");
+		}
+
+		return p1;
+
+	}
+
+	public static int clonarRepositorioJGit(SearchRepository proyecto) {
 		// Preparar una carpeta para el repositorio a clonar
 
 		int exit = 0;
@@ -273,62 +305,75 @@ public class ProbandoAPI {
 					+ proyecto.getName() + "\n\n");
 
 			// Clonar el repositorio
-			if (clonarRepositorio(proyecto) == 0) {
+			Process clonarRepo= clonarRepositorio(proyecto);
+			int exitStatusClonar;
+			try {
+				exitStatusClonar = clonarRepo.waitFor();
+				if (exitStatusClonar==0){
 
-				// Pasarle pmd
-				Process pmd = ejecutarComplejidadPMD(
-						pathRepositorioEnLocal.getAbsolutePath(),
-						pathRepositorioEnLocal.getName());
+					log.println("El proyecto "+proyecto.getName()+" se ha clonado con exito.");
+					logProyectosAnalizados.println("CLONADO\n");
+					
+					// Pasarle pmd
+					Process pmd = ejecutarComplejidadPMD(
+							pathRepositorioEnLocal.getAbsolutePath(),
+							pathRepositorioEnLocal.getName());
 
-				Process lineasCodigo = ejecutarLineasCodigoPMD(
-						pathRepositorioEnLocal.getAbsolutePath(),
-						pathRepositorioEnLocal.getName());
+					Process lineasCodigo = ejecutarLineasCodigoPMD(
+							pathRepositorioEnLocal.getAbsolutePath(),
+							pathRepositorioEnLocal.getName());
 
-				// Esperar a que termine
-				try {
-					final int exitStatus = pmd.waitFor();
-					final int exitStatusLineas = lineasCodigo.waitFor();
+					// Esperar a que termine
+					try {
+						final int exitStatus = pmd.waitFor();
+						final int exitStatusLineas = lineasCodigo.waitFor();
 
-					if (exitStatus == 0) {
-						log.println("El informe de complejidad ciclomatica "
-								+ pathRepositorioEnLocal.getName()
-								+ " se ha creado con exito.\n\n");
-						logProyectosAnalizados
-								.println("ANALIZADA COMPLEJIDAD CICLOMATICA\n");
+						if (exitStatus == 0) {
+							log.println("El informe de complejidad ciclomatica "
+									+ pathRepositorioEnLocal.getName()
+									+ " se ha creado con exito.\n\n");
+							logProyectosAnalizados
+									.println("ANALIZADA COMPLEJIDAD CICLOMATICA\n");
 
-					} else {
-						log.println("El informe de complejidad ciclomatica "
-								+ pathRepositorioEnLocal.getName()
-								+ " no se ha generado.\n\n");
-						logProyectosAnalizados
-								.println("NO ANALIZADA COMPLEJIDAD CICLOMATICA\n");
+						} else {
+							log.println("El informe de complejidad ciclomatica "
+									+ pathRepositorioEnLocal.getName()
+									+ " no se ha generado.\n\n");
+							logProyectosAnalizados
+									.println("NO ANALIZADA COMPLEJIDAD CICLOMATICA\n");
+						}
+
+						if (exitStatusLineas == 0) {
+							log.println("El informe lineas de codigo de "
+									+ pathRepositorioEnLocal.getName()
+									+ " se ha creado con exito.\n\n");
+							logProyectosAnalizados
+									.println("ANALIZADAS LINEAS CODIGO\n");
+						} else {
+							log.println("El informe de lineas de codigo"
+									+ pathRepositorioEnLocal.getName()
+									+ " no se ha generado.\n\n");
+							logProyectosAnalizados
+									.println("NO ANALIZADA LINEAS DE CODIGO\n");
+						}
+
+						// Borrar el directorio
+						borrarDirectorio(pathRepositorioEnLocal.getAbsolutePath());
+
+						log.write("----- Análisis de " + pathRepositorioEnLocal
+								+ " terminado. -----\n\n\n");
+						logProyectosAnalizados.write("----\n\n");
+					} catch (InterruptedException e) {
+						log.println("ERROR proceso PMD interrumpido");
+						log.println(e.getMessage());
 					}
-
-					if (exitStatusLineas == 0) {
-						log.println("El informe lineas de codigo de "
-								+ pathRepositorioEnLocal.getName()
-								+ " se ha creado con exito.\n\n");
-						logProyectosAnalizados
-								.println("ANALIZADAS LINEAS CODIGO\n");
-					} else {
-						log.println("El informe de lineas de codigo"
-								+ pathRepositorioEnLocal.getName()
-								+ " no se ha generado.\n\n");
-						logProyectosAnalizados
-								.println("NO ANALIZADA LINEAS DE CODIGO\n");
-					}
-
-					// Borrar el directorio
-					borrarDirectorio(pathRepositorioEnLocal.getAbsolutePath());
-
-					log.write("----- Análisis de " + pathRepositorioEnLocal
-							+ " terminado. -----\n\n\n");
-					logProyectosAnalizados.write("----\n\n");
-				} catch (InterruptedException e) {
-					log.println("ERROR proceso PMD interrumpido");
-					log.println(e.getMessage());
 				}
+			} catch (InterruptedException e1) {
+				log.println("ERROR proceso GIT interrumpido");
+				log.println(e1.getMessage());
 			}
+			
+
 		}
 	}
 
@@ -374,7 +419,9 @@ public class ProbandoAPI {
 
 			List<SearchRepository> resultadoBusqueda = recuperarLista();
 
-			bigdataDesdeIndex(0,resultadoBusqueda.size(), resultadoBusqueda);
+//			bigdataDesdeIndex(0,resultadoBusqueda.size(), resultadoBusqueda);
+			
+			bigdataDesdeIndex(41,42, resultadoBusqueda);
 
 
 		} finally {

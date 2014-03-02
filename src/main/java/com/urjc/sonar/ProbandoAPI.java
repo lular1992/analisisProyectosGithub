@@ -16,12 +16,10 @@ import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.eclipse.egit.github.core.SearchRepository;
-//import org.eclipse.egit.github.core.Repository;
 import org.eclipse.egit.github.core.service.RepositoryService;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -33,40 +31,57 @@ public class ProbandoAPI {
 	// PMD
 	private static String pathEjecutablePMD = "F:\\Programas\\pmd-bin-5.1.0\\bin\\pmd.bat";
 	private static String pathRulesetPMDComplejidad = "F:\\Programas\\pmd-bin-5.1.0\\rulesets\\rulesetTodaComplejidad.xml";
-	private static String pathRulesetPMDLineasCodigo = "F:\\programas\\pmd-bin-5.1.0\\rulesets\\rulesetTodaLineasClase.xml";
+	private static String pathRulesetPMDLineasCodigo = "F:\\Programas\\pmd-bin-5.1.0\\rulesets\\rulesetTodaLineasClase.xml";
 	private static String pathInformeGenerado = "F:\\prueba\\informes\\";
 	private static String formatoInforme = "csv";
 
 	// GIT
 	private static File pathRepositorioEnLocal;
 	private static String raizProyecto = "F:/prueba";
+	private static long TAMANIO_MAX_CLONAR = 150000;
 
 	// GITHUB
 	private static String pathListaRepositorios = "F:\\prueba\\resultadoBusqueda.txt";
 
 	// LOGS
-	private static PrintWriter logBorradoFicheros,log,logProyectosAnalizados,versiones;
+	private static PrintWriter logBorradoFicheros, log, logProyectosAnalizados,
+			datosProyectos, proyectosGrandesNoClonados;
+
 	private static String pathLogBorrados = "F:\\prueba\\logs\\logBorradoFicheros.txt";
 	private static String pathLog = "F:\\prueba\\logs\\errores.txt";
 	private static String pathVersiones = "F:\\prueba\\informes\\0-ultimoPush.txt";
 	private static String pathProyectosAnalizados = "F:\\prueba\\logs\\logProyectosAnalizados.txt";
+	private static String pathProyectosGrandesNoClonados = "F:\\prueba\\logs\\logProyectosGrandesNoClonados.txt";
 
-	public static List<SearchRepository> searchRepo() throws IOException {
+	/**
+	 * @author Ana Los parametros de busqueda se introducen por parejas: ej
+	 *         language, java La api solo devuelve los 1000 primeros resultados,
+	 *         y lo hace de 100 en 100. http://developer.github.com/v3/search/
+	 */
+	public static List<SearchRepository> buscarRepositorios(
+			Map<String, String> parametrosBusqueda) {
 
 		RepositoryService service = new RepositoryService();
 
-		Map<String, String> parametrosBusqueda = new HashMap<String, String>();
+		// usuario y contraseña de github
+		service.getClient().setCredentials("XXX", "XXX");
 
-		parametrosBusqueda.put("language", "java");
+		List<SearchRepository> resultadoBusqueda = null;
+		try {
+			resultadoBusqueda = service.searchRepositories(parametrosBusqueda);
+			// La api de github solo muestra los 1000 primeros resultados
+			// Y los devuelve de 100 en 100
+			// 20-feb-2014
+			for (int i = 2; i < 11; i++) {
+				List<SearchRepository> masResultados = service
+						.searchRepositories(parametrosBusqueda, i);
+				resultadoBusqueda.addAll(masResultados);
+			}
 
-		List<SearchRepository> resultadoBusqueda = service
-				.searchRepositories(parametrosBusqueda);
-
-		// La api de github solo muestra los 1000 primeros resultados
-		// 20-feb-2014
-		for (int i = 2; i < 11; i++) {
-			List<SearchRepository> masResultados = service.searchRepositories(parametrosBusqueda, i);
-			resultadoBusqueda.addAll(masResultados);
+		} catch (IOException e) {
+			log.println("Error a la hora de buscar los repositorios con parametros "
+					+ parametrosBusqueda);
+			log.println(e.getMessage());
 		}
 
 		return resultadoBusqueda;
@@ -82,47 +97,20 @@ public class ProbandoAPI {
 		}
 	}
 
-	public static Process ejecutarComplejidadPMD(String pathProyecto,
-			String nombreProyecto) {
-
-		String comando = pathEjecutablePMD + " -dir " + pathProyecto + " -f "
-				+ formatoInforme + " -R " + pathRulesetPMDComplejidad + ">  "
-				+ pathInformeGenerado + nombreProyecto + "-complejidad-ciclo"
-				+ "." + formatoInforme;
+	public static Process ejecutarComandoPMD(String comandoAEjecutar,
+			String tipo) {
 
 		Runtime runtime = Runtime.getRuntime();
 		Process p1 = null;
 		try {
-			p1 = runtime.exec(comando);
+			p1 = runtime.exec(comandoAEjecutar);
 		} catch (IOException e) {
-			log.println("No se ha podido ejecutar la instrucción PMD complejidad ciclomática");
+			log.println("No se ha podido ejecutar la instrucción PMD de "
+					+ tipo);
 			log.println(e.getMessage());
 		} catch (Exception e) {
-			log.println("Error desconocido. Comando ejecutado: " + comando);
-			log.println(e.getMessage());
-		}
-
-		return p1;
-
-	}
-
-	public static Process ejecutarLineasCodigoPMD(String pathProyecto,
-			String nombreProyecto) {
-
-		String comando = pathEjecutablePMD + " -dir " + pathProyecto + " -f "
-				+ formatoInforme + " -R " + pathRulesetPMDLineasCodigo + ">  "
-				+ pathInformeGenerado + nombreProyecto + "-lineas-codigo" + "."
-				+ formatoInforme;
-
-		Runtime runtime = Runtime.getRuntime();
-		Process p1 = null;
-		try {
-			p1 = runtime.exec(comando);
-		} catch (IOException e) {
-			log.println("No se ha podido ejecutar la instrucción PMD líneas de código");
-			log.println(e.getMessage());
-		} catch (Exception e) {
-			log.println("Error desconocido. Comando ejecutado: " + comando);
+			log.println("Error desconocido. Comando ejecutado: "
+					+ comandoAEjecutar);
 			log.println(e.getMessage());
 		}
 
@@ -148,13 +136,12 @@ public class ProbandoAPI {
 		}
 	}
 
-	public static List<SearchRepository> recuperarLista() {
+	public static List<SearchRepository> recuperarLista(String ruta) {
 		InputStream archivoListaRepositorios;
 		List<SearchRepository> listaRecuperada = null;
 
 		try {
-			archivoListaRepositorios = new FileInputStream(
-					pathListaRepositorios);
+			archivoListaRepositorios = new FileInputStream(ruta);
 			InputStream buffer = new BufferedInputStream(
 					archivoListaRepositorios);
 			ObjectInput input = new ObjectInputStream(buffer);
@@ -175,11 +162,10 @@ public class ProbandoAPI {
 		return listaRecuperada;
 	}
 
-	public static void guardarLista(List<SearchRepository> resultadoBusqueda)
-			throws IOException {
-		// serialize the List
-		OutputStream file = new FileOutputStream(
-				"D:\\prueba\\resultadoBusqueda.txt");
+	public static void guardarLista(List<SearchRepository> resultadoBusqueda,
+			String ruta) throws IOException {
+		// serializar la lista
+		OutputStream file = new FileOutputStream(ruta);
 		OutputStream buffer = new BufferedOutputStream(file);
 		ObjectOutput output = new ObjectOutputStream(buffer);
 		output.writeObject(resultadoBusqueda);
@@ -205,11 +191,11 @@ public class ProbandoAPI {
 	}
 
 	public static Process clonarRepositorio(SearchRepository proyecto) {
-		
+
 		String urlProyecto = proyecto.getUrl() + ".git";
-		String comando="";
+		String comando = "";
 		Process p1 = null;
-		
+
 		try {
 			pathRepositorioEnLocal = File.createTempFile(proyecto.getName(),
 					"", new File(raizProyecto));
@@ -219,12 +205,13 @@ public class ProbandoAPI {
 			log.println("Clonando desde " + urlProyecto + " a "
 					+ pathRepositorioEnLocal + "\n");
 
-			comando = "git clone "+urlProyecto+" "+pathRepositorioEnLocal;
+			comando = "git clone " + urlProyecto + " " + pathRepositorioEnLocal;
 
 			Runtime runtime = Runtime.getRuntime();
 			p1 = runtime.exec(comando);
 		} catch (IOException e) {
-			log.println("No se ha podido clonar el repositorio "+proyecto.getName()+" desde "+urlProyecto);
+			log.println("No se ha podido clonar el repositorio "
+					+ proyecto.getName() + " desde " + urlProyecto);
 			log.println(e.getMessage());
 			logProyectosAnalizados.println("NO CLONADO");
 		} catch (Exception e) {
@@ -289,91 +276,139 @@ public class ProbandoAPI {
 
 	}
 
+	public static void guardarDatosGitDeTodosProyectos(
+			List<SearchRepository> resultadosBusqueda) {
+
+		for (int i = 0; i < resultadosBusqueda.size(); i++) {
+			SearchRepository proyecto = resultadosBusqueda.get(i);
+			datosProyectos
+					.println("Nombre, descripción, url, homepage, language, owner, pushed at, created at, forks, open issues,watchers, tamaño, tiene descargas?, tiene wiki?");
+			datosProyectos.println(proyecto.getName());
+			datosProyectos.println(proyecto.getDescription());
+			datosProyectos.println(proyecto.getUrl());
+			datosProyectos.println(proyecto.getHomepage());
+			datosProyectos.println(proyecto.getLanguage());
+			datosProyectos.println(proyecto.getOwner());
+			datosProyectos.println(proyecto.getPushedAt());
+			datosProyectos.println(proyecto.getCreatedAt());
+			datosProyectos.println(proyecto.getForks());
+			datosProyectos.println(proyecto.getOpenIssues());
+			datosProyectos.println(proyecto.getWatchers());
+			datosProyectos.println(proyecto.getSize());
+			datosProyectos.println(proyecto.isHasDownloads());
+			datosProyectos.println(proyecto.isHasWiki());
+		}
+	}
+
 	public static void bigdataDesdeIndex(int indice, int fin,
 			List<SearchRepository> resultadoBusqueda) {
 
 		for (int i = indice; i < fin; i++) {
-			
+
 			SearchRepository proyecto = resultadoBusqueda.get(i);
-
-			versiones.println(proyecto.getName() + "\n");
-			versiones.println(proyecto.getPushedAt() + "\n");
-			versiones.println(proyecto.hashCode() + "\n");
-
 			log.println("-----" + proyecto.getName() + "-----\n\n");
 			logProyectosAnalizados.println(i + " PROYECTO "
 					+ proyecto.getName() + "\n\n");
+			long tamanio = proyecto.getSize();
 
-			// Clonar el repositorio
-			Process clonarRepo= clonarRepositorio(proyecto);
-			int exitStatusClonar;
-			try {
-				exitStatusClonar = clonarRepo.waitFor();
-				if (exitStatusClonar==0){
+			if (tamanio > TAMANIO_MAX_CLONAR) {
+				proyectosGrandesNoClonados
+						.println(i + " " + proyecto.getName());
+				logProyectosAnalizados.println("Muy grande," + tamanio
+						+ " dejado para clonar con git.\n");
+				log.println("Muy grande," + tamanio
+						+ " dejado para clonar con git.\n");
+			} else {
 
-					log.println("El proyecto "+proyecto.getName()+" se ha clonado con exito.");
-					logProyectosAnalizados.println("CLONADO\n");
-					
-					// Pasarle pmd
-					Process pmd = ejecutarComplejidadPMD(
-							pathRepositorioEnLocal.getAbsolutePath(),
-							pathRepositorioEnLocal.getName());
+				// Clonar el repositorio
+				Process clonarRepo = clonarRepositorio(proyecto);
+				int exitStatusClonar;
+				try {
+					exitStatusClonar = clonarRepo.waitFor();
+					if (exitStatusClonar == 0) {
 
-					Process lineasCodigo = ejecutarLineasCodigoPMD(
-							pathRepositorioEnLocal.getAbsolutePath(),
-							pathRepositorioEnLocal.getName());
+						log.println("El proyecto " + proyecto.getName()
+								+ " se ha clonado con exito.");
+						logProyectosAnalizados.println("CLONADO\n");
 
-					// Esperar a que termine
-					try {
-						final int exitStatus = pmd.waitFor();
-						final int exitStatusLineas = lineasCodigo.waitFor();
+						// Pasarle pmd
+						String comandoPMDComplejidad = pathEjecutablePMD
+								+ " -dir "
+								+ pathRepositorioEnLocal.getAbsolutePath()
+								+ " -f " + formatoInforme + " -R "
+								+ pathRulesetPMDComplejidad + ">  "
+								+ pathInformeGenerado
+								+ pathRepositorioEnLocal.getName()
+								+ "-complejidad-ciclo" + "." + formatoInforme;
 
-						if (exitStatus == 0) {
-							log.println("El informe de complejidad ciclomatica "
-									+ pathRepositorioEnLocal.getName()
-									+ " se ha creado con exito.\n\n");
-							logProyectosAnalizados
-									.println("ANALIZADA COMPLEJIDAD CICLOMATICA\n");
+						Process pmd = ejecutarComandoPMD(comandoPMDComplejidad,
+								"complejidad ciclomática");
 
-						} else {
-							log.println("El informe de complejidad ciclomatica "
-									+ pathRepositorioEnLocal.getName()
-									+ " no se ha generado.\n\n");
-							logProyectosAnalizados
-									.println("NO ANALIZADA COMPLEJIDAD CICLOMATICA\n");
+						String comandoPMDLoc = pathEjecutablePMD + " -dir "
+								+ pathRepositorioEnLocal.getAbsolutePath()
+								+ " -f " + formatoInforme + " -R "
+								+ pathRulesetPMDLineasCodigo + ">  "
+								+ pathInformeGenerado
+								+ pathRepositorioEnLocal.getName()
+								+ "-lineas-codigo" + "." + formatoInforme;
+
+						Process lineasCodigo = ejecutarComandoPMD(
+								comandoPMDLoc, "líneas de código");
+						
+
+						// Esperar a que termine
+						try {
+							final int exitStatus = pmd.waitFor();
+							final int exitStatusLineas = lineasCodigo.waitFor();
+
+							if (exitStatus == 0) {
+								log.println("El informe de complejidad ciclomatica "
+										+ pathRepositorioEnLocal.getName()
+										+ " se ha creado con exito.\n\n");
+								logProyectosAnalizados
+										.println("ANALIZADA COMPLEJIDAD CICLOMATICA\n");
+
+							} else {
+								log.println("El informe de complejidad ciclomatica "
+										+ pathRepositorioEnLocal.getName()
+										+ " no se ha generado.\n\n");
+								logProyectosAnalizados
+										.println("NO ANALIZADA COMPLEJIDAD CICLOMATICA\n");
+							}
+
+							if (exitStatusLineas == 0) {
+								log.println("El informe lineas de codigo de "
+										+ pathRepositorioEnLocal.getName()
+										+ " se ha creado con exito.\n\n");
+								logProyectosAnalizados
+										.println("ANALIZADAS LINEAS CODIGO\n");
+							} else {
+								log.println("El informe de lineas de codigo"
+										+ pathRepositorioEnLocal.getName()
+										+ " no se ha generado.\n\n");
+								logProyectosAnalizados
+										.println("NO ANALIZADA LINEAS DE CODIGO\n");
+							}
+
+							// Borrar el directorio
+							borrarDirectorio(pathRepositorioEnLocal
+									.getAbsolutePath());
+
+							log.write("----- Análisis de "
+									+ pathRepositorioEnLocal
+									+ " terminado. -----\n\n\n");
+							logProyectosAnalizados.write("----\n\n");
+						} catch (InterruptedException e) {
+							log.println("ERROR proceso PMD interrumpido");
+							log.println(e.getMessage());
 						}
-
-						if (exitStatusLineas == 0) {
-							log.println("El informe lineas de codigo de "
-									+ pathRepositorioEnLocal.getName()
-									+ " se ha creado con exito.\n\n");
-							logProyectosAnalizados
-									.println("ANALIZADAS LINEAS CODIGO\n");
-						} else {
-							log.println("El informe de lineas de codigo"
-									+ pathRepositorioEnLocal.getName()
-									+ " no se ha generado.\n\n");
-							logProyectosAnalizados
-									.println("NO ANALIZADA LINEAS DE CODIGO\n");
-						}
-
-						// Borrar el directorio
-						borrarDirectorio(pathRepositorioEnLocal.getAbsolutePath());
-
-						log.write("----- Análisis de " + pathRepositorioEnLocal
-								+ " terminado. -----\n\n\n");
-						logProyectosAnalizados.write("----\n\n");
-					} catch (InterruptedException e) {
-						log.println("ERROR proceso PMD interrumpido");
-						log.println(e.getMessage());
 					}
+				} catch (InterruptedException e1) {
+					log.println("ERROR proceso GIT interrumpido");
+					log.println(e1.getMessage());
 				}
-			} catch (InterruptedException e1) {
-				log.println("ERROR proceso GIT interrumpido");
-				log.println(e1.getMessage());
-			}
-			
 
+			}
 		}
 	}
 
@@ -412,23 +447,32 @@ public class ProbandoAPI {
 			logBorradoFicheros = crearLog(pathLogBorrados);
 			log = crearLog(pathLog);
 			logProyectosAnalizados = crearLog(pathProyectosAnalizados);
-			versiones = crearLog(pathVersiones);
+			datosProyectos = crearLog(pathVersiones);
+			proyectosGrandesNoClonados = crearLog(pathProyectosGrandesNoClonados);
 
-			// List<SearchRepository> resultadoBusqueda = searchRepo();
-			// guardarLista(resultadoBusqueda);
+			// Map<String, String> parametrosBusqueda = new HashMap<String,
+			// String>();
+			// parametrosBusqueda.put("language", "java");
+			// parametrosBusqueda.put("sort", "forks");
+			//
+			// List<SearchRepository> resultadoBusqueda =
+			// buscarRepositorios(parametrosBusqueda);
 
-			List<SearchRepository> resultadoBusqueda = recuperarLista();
+			// guardarLista(resultadoBusqueda,pathListaRepositorios);
+			// guardarDatosGitDeTodosProyectos(resultadoBusqueda);
 
-//			bigdataDesdeIndex(0,resultadoBusqueda.size(), resultadoBusqueda);
-			
-			bigdataDesdeIndex(41,42, resultadoBusqueda);
+			List<SearchRepository> resultadoBusqueda = recuperarLista(pathListaRepositorios);
 
+			// bigdataDesdeIndex(0,resultadoBusqueda.size(), resultadoBusqueda);
+
+			bigdataDesdeIndex(41, 42, resultadoBusqueda);
 
 		} finally {
 			logBorradoFicheros.close();
 			log.close();
 			logProyectosAnalizados.close();
-			versiones.close();
+			datosProyectos.close();
+			proyectosGrandesNoClonados.close();
 		}
 
 	}
